@@ -19,6 +19,7 @@ import * as random from 'maath/random';
 // --- 动态导入 assets 文件夹下的所有 jpg 图片 ---
 const photosRecord = import.meta.glob('./assets/*.jpg', { eager: true });
 const bodyPhotoPaths = Object.values(photosRecord).map((mod: any) => mod.default);
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 // --- 视觉配置 ---
 const CONFIG = {
@@ -38,7 +39,7 @@ const CONFIG = {
     candyColors: ['#FF0000', '#FFFFFF']
   },
   counts: {
-    foliage: 15000,
+    foliage: isMobile ? 6000 : 15000,
     ornaments: bodyPhotoPaths.length,   // 拍立得照片数量 (跟图片数量一致，不重复)
     elements: 200,    // 圣诞元素数量
     lights: 400       // 彩灯数量
@@ -278,7 +279,7 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
       {data.map((obj, i) => {
         let geometry; if (obj.type === 0) geometry = boxGeometry; else if (obj.type === 1) geometry = sphereGeometry; else geometry = caneGeometry;
         return (<mesh key={i} scale={[obj.scale, obj.scale, obj.scale]} geometry={geometry} rotation={obj.chaosRotation}>
-          <meshStandardMaterial color={obj.color} roughness={0.3} metalness={0.4} emissive={obj.color} emissiveIntensity={0.2} />
+          <meshStandardMaterial color={obj.color} roughness={0.3} metalness={0.4} emissive={obj.color} emissiveIntensity={0.2} toneMapped={false}/>
         </mesh>)
       })}
     </group>
@@ -423,10 +424,18 @@ const Experience = ({ sceneState, setSceneState, rotationSpeed, onSelectImage }:
         <Sparkles count={600} scale={50} size={8} speed={0.4} opacity={0.4} color={CONFIG.colors.silver} />
       </group>
 
-      <EffectComposer>
-        <Bloom luminanceThreshold={0.8} luminanceSmoothing={0.1} intensity={1.5} radius={0.5} mipmapBlur />
-        <Vignette eskil={false} offset={0.1} darkness={1.2} />
-      </EffectComposer>
+      {!isMobile && (
+        <EffectComposer>
+          <Bloom
+            luminanceThreshold={0.8}
+            luminanceSmoothing={0.1}
+            intensity={1.5}
+            radius={0.5}
+            mipmapBlur
+          />
+          <Vignette eskil={false} offset={0.1} darkness={1.2} />
+        </EffectComposer>
+      )}
     </>
   );
 };
@@ -443,7 +452,14 @@ export default function GrandTreeApp() {
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
-        <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
+        <Canvas
+          dpr={isMobile ? 1 : [1, 2]}
+          gl={{
+            toneMapping: isMobile ? THREE.NoToneMapping : THREE.ReinhardToneMapping,
+            powerPreference: "high-performance",
+            antialias: !isMobile
+          }}
+        >
           <Experience sceneState={sceneState} setSceneState={setSceneState} rotationSpeed={rotationSpeed} onSelectImage={setSelectedImage} />
         </Canvas>
       </div>
