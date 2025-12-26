@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, Suspense } from 'react';
+import { useState, useMemo, useRef, Suspense } from 'react';
 import { Canvas, useFrame, extend } from '@react-three/fiber';
 import {
   OrbitControls,
@@ -14,15 +14,11 @@ import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { MathUtils } from 'three';
 import * as random from 'maath/random';
-import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
+// Removed MediaPipe imports
 
-// --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
-const TOTAL_NUMBERED_PHOTOS = 31;
-// 修改：将 top.jpg 加入到数组开头
-const bodyPhotoPaths = [
-  '/photos/top.jpg',
-  ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => `/photos/${i + 1}.jpg`)
-];
+// --- 动态导入 assets 文件夹下的所有 jpg 图片 ---
+const photosRecord = import.meta.glob('./assets/*.jpg', { eager: true });
+const bodyPhotoPaths = Object.values(photosRecord).map((mod: any) => mod.default);
 
 // --- 视觉配置 ---
 const CONFIG = {
@@ -43,7 +39,7 @@ const CONFIG = {
   },
   counts: {
     foliage: 15000,
-    ornaments: 300,   // 拍立得照片数量
+    ornaments: bodyPhotoPaths.length,   // 拍立得照片数量 (跟图片数量一致，不重复)
     elements: 200,    // 圣诞元素数量
     lights: 400       // 彩灯数量
   },
@@ -82,7 +78,7 @@ extend({ FoliageMaterial });
 // --- Helper: Tree Shape ---
 const getTreePosition = () => {
   const h = CONFIG.tree.height; const rBase = CONFIG.tree.radius;
-  const y = (Math.random() * h) - (h / 2); const normalizedY = (y + (h/2)) / h;
+  const y = (Math.random() * h) - (h / 2); const normalizedY = (y + (h / 2)) / h;
   const currentRadius = rBase * (1 - normalizedY); const theta = Math.random() * Math.PI * 2;
   const r = Math.random() * currentRadius;
   return [r * Math.cos(theta), y, r * Math.sin(theta)];
@@ -96,9 +92,9 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
     const positions = new Float32Array(count * 3); const targetPositions = new Float32Array(count * 3); const randoms = new Float32Array(count);
     const spherePoints = random.inSphere(new Float32Array(count * 3), { radius: 25 }) as Float32Array;
     for (let i = 0; i < count; i++) {
-      positions[i*3] = spherePoints[i*3]; positions[i*3+1] = spherePoints[i*3+1]; positions[i*3+2] = spherePoints[i*3+2];
+      positions[i * 3] = spherePoints[i * 3]; positions[i * 3 + 1] = spherePoints[i * 3 + 1]; positions[i * 3 + 2] = spherePoints[i * 3 + 2];
       const [tx, ty, tz] = getTreePosition();
-      targetPositions[i*3] = tx; targetPositions[i*3+1] = ty; targetPositions[i*3+2] = tz;
+      targetPositions[i * 3] = tx; targetPositions[i * 3 + 1] = ty; targetPositions[i * 3 + 2] = tz;
       randoms[i] = Math.random();
     }
     return { positions, targetPositions, randoms };
@@ -124,7 +120,7 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Component: Photo Ornaments (Double-Sided Polaroid) ---
-const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
+const PhotoOrnaments = ({ state, onSelectImage }: { state: 'CHAOS' | 'FORMED', onSelectImage: (url: string) => void }) => {
   const textures = useTexture(CONFIG.photos.body);
   const count = CONFIG.counts.ornaments;
   const groupRef = useRef<THREE.Group>(null);
@@ -134,10 +130,10 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 
   const data = useMemo(() => {
     return new Array(count).fill(0).map((_, i) => {
-      const chaosPos = new THREE.Vector3((Math.random()-0.5)*70, (Math.random()-0.5)*70, (Math.random()-0.5)*70);
+      const chaosPos = new THREE.Vector3((Math.random() - 0.5) * 70, (Math.random() - 0.5) * 70, (Math.random() - 0.5) * 70);
       const h = CONFIG.tree.height; const y = (Math.random() * h) - (h / 2);
       const rBase = CONFIG.tree.radius;
-      const currentRadius = (rBase * (1 - (y + (h/2)) / h)) + 0.5;
+      const currentRadius = (rBase * (1 - (y + (h / 2)) / h)) + 0.5;
       const theta = Math.random() * Math.PI * 2;
       const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta));
 
@@ -151,7 +147,7 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
         y: (Math.random() - 0.5) * 1.0,
         z: (Math.random() - 0.5) * 1.0
       };
-      const chaosRotation = new THREE.Euler(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+      const chaosRotation = new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
 
       return {
         chaosPos, targetPos, scale: baseScale, weight,
@@ -179,18 +175,18 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
       group.position.copy(objData.currentPos);
 
       if (isFormed) {
-         const targetLookPos = new THREE.Vector3(group.position.x * 2, group.position.y + 0.5, group.position.z * 2);
-         group.lookAt(targetLookPos);
+        const targetLookPos = new THREE.Vector3(group.position.x * 2, group.position.y + 0.5, group.position.z * 2);
+        group.lookAt(targetLookPos);
 
-         const wobbleX = Math.sin(time * objData.wobbleSpeed + objData.wobbleOffset) * 0.05;
-         const wobbleZ = Math.cos(time * objData.wobbleSpeed * 0.8 + objData.wobbleOffset) * 0.05;
-         group.rotation.x += wobbleX;
-         group.rotation.z += wobbleZ;
+        const wobbleX = Math.sin(time * objData.wobbleSpeed + objData.wobbleOffset) * 0.05;
+        const wobbleZ = Math.cos(time * objData.wobbleSpeed * 0.8 + objData.wobbleOffset) * 0.05;
+        group.rotation.x += wobbleX;
+        group.rotation.z += wobbleZ;
 
       } else {
-         group.rotation.x += delta * objData.rotationSpeed.x;
-         group.rotation.y += delta * objData.rotationSpeed.y;
-         group.rotation.z += delta * objData.rotationSpeed.z;
+        group.rotation.x += delta * objData.rotationSpeed.x;
+        group.rotation.y += delta * objData.rotationSpeed.y;
+        group.rotation.z += delta * objData.rotationSpeed.z;
       }
     });
   });
@@ -198,7 +194,7 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
   return (
     <group ref={groupRef}>
       {data.map((obj, i) => (
-        <group key={i} scale={[obj.scale, obj.scale, obj.scale]} rotation={state === 'CHAOS' ? obj.chaosRotation : [0,0,0]}>
+        <group key={i} scale={[obj.scale, obj.scale, obj.scale]} rotation={state === 'CHAOS' ? obj.chaosRotation : [0, 0, 0]} onClick={(e) => { e.stopPropagation(); onSelectImage(bodyPhotoPaths[obj.textureIndex]); }}>
           {/* 正面 */}
           <group position={[0, 0, 0.015]}>
             <mesh geometry={photoGeometry}>
@@ -244,11 +240,11 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 
   const data = useMemo(() => {
     return new Array(count).fill(0).map(() => {
-      const chaosPos = new THREE.Vector3((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60);
+      const chaosPos = new THREE.Vector3((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60);
       const h = CONFIG.tree.height;
       const y = (Math.random() * h) - (h / 2);
       const rBase = CONFIG.tree.radius;
-      const currentRadius = (rBase * (1 - (y + (h/2)) / h)) * 0.95;
+      const currentRadius = (rBase * (1 - (y + (h / 2)) / h)) * 0.95;
       const theta = Math.random() * Math.PI * 2;
 
       const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta));
@@ -259,8 +255,8 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
       else if (type === 1) { color = CONFIG.colors.giftColors[Math.floor(Math.random() * CONFIG.colors.giftColors.length)]; scale = 0.6 + Math.random() * 0.4; }
       else { color = Math.random() > 0.5 ? CONFIG.colors.red : CONFIG.colors.white; scale = 0.7 + Math.random() * 0.3; }
 
-      const rotationSpeed = { x: (Math.random()-0.5)*2.0, y: (Math.random()-0.5)*2.0, z: (Math.random()-0.5)*2.0 };
-      return { type, chaosPos, targetPos, color, scale, currentPos: chaosPos.clone(), chaosRotation: new THREE.Euler(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI), rotationSpeed };
+      const rotationSpeed = { x: (Math.random() - 0.5) * 2.0, y: (Math.random() - 0.5) * 2.0, z: (Math.random() - 0.5) * 2.0 };
+      return { type, chaosPos, targetPos, color, scale, currentPos: chaosPos.clone(), chaosRotation: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI), rotationSpeed };
     });
   }, [boxGeometry, sphereGeometry, caneGeometry]);
 
@@ -281,9 +277,10 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
     <group ref={groupRef}>
       {data.map((obj, i) => {
         let geometry; if (obj.type === 0) geometry = boxGeometry; else if (obj.type === 1) geometry = sphereGeometry; else geometry = caneGeometry;
-        return ( <mesh key={i} scale={[obj.scale, obj.scale, obj.scale]} geometry={geometry} rotation={obj.chaosRotation}>
+        return (<mesh key={i} scale={[obj.scale, obj.scale, obj.scale]} geometry={geometry} rotation={obj.chaosRotation}>
           <meshStandardMaterial color={obj.color} roughness={0.3} metalness={0.4} emissive={obj.color} emissiveIntensity={0.2} />
-        </mesh> )})}
+        </mesh>)
+      })}
     </group>
   );
 };
@@ -296,9 +293,9 @@ const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 
   const data = useMemo(() => {
     return new Array(count).fill(0).map(() => {
-      const chaosPos = new THREE.Vector3((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60);
+      const chaosPos = new THREE.Vector3((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60);
       const h = CONFIG.tree.height; const y = (Math.random() * h) - (h / 2); const rBase = CONFIG.tree.radius;
-      const currentRadius = (rBase * (1 - (y + (h/2)) / h)) + 0.3; const theta = Math.random() * Math.PI * 2;
+      const currentRadius = (rBase * (1 - (y + (h / 2)) / h)) + 0.3; const theta = Math.random() * Math.PI * 2;
       const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta));
       const color = CONFIG.colors.lights[Math.floor(Math.random() * CONFIG.colors.lights.length)];
       const speed = 2 + Math.random() * 3;
@@ -323,9 +320,9 @@ const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 
   return (
     <group ref={groupRef}>
-      {data.map((obj, i) => ( <mesh key={i} scale={[0.15, 0.15, 0.15]} geometry={geometry}>
-          <meshStandardMaterial color={obj.color} emissive={obj.color} emissiveIntensity={0} toneMapped={false} />
-        </mesh> ))}
+      {data.map((obj, i) => (<mesh key={i} scale={[0.15, 0.15, 0.15]} geometry={geometry}>
+        <meshStandardMaterial color={obj.color} emissive={obj.color} emissiveIntensity={0} toneMapped={false} />
+      </mesh>))}
     </group>
   );
 };
@@ -340,7 +337,7 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
     for (let i = 0; i < points * 2; i++) {
       const radius = i % 2 === 0 ? outerRadius : innerRadius;
       const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
-      i === 0 ? shape.moveTo(radius*Math.cos(angle), radius*Math.sin(angle)) : shape.lineTo(radius*Math.cos(angle), radius*Math.sin(angle));
+      i === 0 ? shape.moveTo(radius * Math.cos(angle), radius * Math.sin(angle)) : shape.lineTo(radius * Math.cos(angle), radius * Math.sin(angle));
     }
     shape.closePath();
     return shape;
@@ -380,18 +377,30 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Main Scene Experience ---
-const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number }) => {
+const Experience = ({ sceneState, setSceneState, rotationSpeed, onSelectImage }: { sceneState: 'CHAOS' | 'FORMED', setSceneState: (s: 'CHAOS' | 'FORMED') => void, rotationSpeed: number, onSelectImage: (url: string) => void }) => {
   const controlsRef = useRef<any>(null);
-  useFrame(() => {
+
+  useFrame((state) => {
     if (controlsRef.current) {
       controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationSpeed);
       controlsRef.current.update();
+
+      // Zoom Logic: Check distance to center
+      const camera = state.camera;
+      const distance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
+      const threshold = 80;
+
+      if (distance < threshold && sceneState === 'FORMED') {
+        setSceneState('CHAOS');
+      } else if (distance > threshold && sceneState === 'CHAOS') {
+        setSceneState('FORMED');
+      }
     }
   });
 
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, 8, 60]} fov={45} />
+      <PerspectiveCamera makeDefault position={[0, 8, 100]} fov={45} />
       <OrbitControls ref={controlsRef} enablePan={false} enableZoom={true} minDistance={30} maxDistance={120} autoRotate={rotationSpeed === 0 && sceneState === 'FORMED'} autoRotateSpeed={0.3} maxPolarAngle={Math.PI / 1.7} />
 
       <color attach="background" args={['#000300']} />
@@ -406,10 +415,10 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
       <group position={[0, -6, 0]}>
         <Foliage state={sceneState} />
         <Suspense fallback={null}>
-           <PhotoOrnaments state={sceneState} />
-           <ChristmasElements state={sceneState} />
-           <FairyLights state={sceneState} />
-           <TopStar state={sceneState} />
+          <PhotoOrnaments state={sceneState} onSelectImage={onSelectImage} />
+          <ChristmasElements state={sceneState} />
+          <FairyLights state={sceneState} />
+          <TopStar state={sceneState} />
         </Suspense>
         <Sparkles count={600} scale={50} size={8} speed={0.4} opacity={0.4} color={CONFIG.colors.silver} />
       </group>
@@ -422,105 +431,25 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
   );
 };
 
-// --- Gesture Controller ---
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    let gestureRecognizer: GestureRecognizer;
-    let requestRef: number;
-
-    const setup = async () => {
-      onStatus("DOWNLOADING AI...");
-      try {
-        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-        gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-            delegate: "GPU"
-          },
-          runningMode: "VIDEO",
-          numHands: 1
-        });
-        onStatus("REQUESTING CAMERA...");
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.play();
-            onStatus("AI READY: SHOW HAND");
-            predictWebcam();
-          }
-        } else {
-            onStatus("ERROR: CAMERA PERMISSION DENIED");
-        }
-      } catch (err: any) {
-        onStatus(`ERROR: ${err.message || 'MODEL FAILED'}`);
-      }
-    };
-
-    const predictWebcam = () => {
-      if (gestureRecognizer && videoRef.current && canvasRef.current) {
-        if (videoRef.current.videoWidth > 0) {
-            const results = gestureRecognizer.recognizeForVideo(videoRef.current, Date.now());
-            const ctx = canvasRef.current.getContext("2d");
-            if (ctx && debugMode) {
-                ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-                canvasRef.current.width = videoRef.current.videoWidth; canvasRef.current.height = videoRef.current.videoHeight;
-                if (results.landmarks) for (const landmarks of results.landmarks) {
-                        const drawingUtils = new DrawingUtils(ctx);
-                        drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, { color: "#FFD700", lineWidth: 2 });
-                        drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 1 });
-                }
-            } else if (ctx && !debugMode) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-
-            if (results.gestures.length > 0) {
-              const name = results.gestures[0][0].categoryName; const score = results.gestures[0][0].score;
-              if (score > 0.4) {
-                 if (name === "Open_Palm") onGesture("CHAOS"); if (name === "Closed_Fist") onGesture("FORMED");
-                 if (debugMode) onStatus(`DETECTED: ${name}`);
-              }
-              if (results.landmarks.length > 0) {
-                const speed = (0.5 - results.landmarks[0][0].x) * 0.15;
-                onMove(Math.abs(speed) > 0.01 ? speed : 0);
-              }
-            } else { onMove(0); if (debugMode) onStatus("AI READY: NO HAND"); }
-        }
-        requestRef = requestAnimationFrame(predictWebcam);
-      }
-    };
-    setup();
-    return () => cancelAnimationFrame(requestRef);
-  }, [onGesture, onMove, onStatus, debugMode]);
-
-  return (
-    <>
-      <video ref={videoRef} style={{ opacity: debugMode ? 0.6 : 0, position: 'fixed', top: 0, right: 0, width: debugMode ? '320px' : '1px', zIndex: debugMode ? 100 : -1, pointerEvents: 'none', transform: 'scaleX(-1)' }} playsInline muted autoPlay />
-      <canvas ref={canvasRef} style={{ position: 'fixed', top: 0, right: 0, width: debugMode ? '320px' : '1px', height: debugMode ? 'auto' : '1px', zIndex: debugMode ? 101 : -1, pointerEvents: 'none', transform: 'scaleX(-1)' }} />
-    </>
-  );
-};
 
 // --- App Entry ---
 export default function GrandTreeApp() {
-  const [sceneState, setSceneState] = useState<'CHAOS' | 'FORMED'>('CHAOS');
-  const [rotationSpeed, setRotationSpeed] = useState(0);
-  const [aiStatus, setAiStatus] = useState("INITIALIZING...");
-  const [debugMode, setDebugMode] = useState(false);
+  const [sceneState, setSceneState] = useState<'CHAOS' | 'FORMED'>('FORMED');
+  // Rotation speed set to constant slow rotation for now, or 0 if desired
+  const [rotationSpeed] = useState(0.001);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
         <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
-            <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} />
+          <Experience sceneState={sceneState} setSceneState={setSceneState} rotationSpeed={rotationSpeed} onSelectImage={setSelectedImage} />
         </Canvas>
       </div>
-      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} />
 
       {/* UI - Stats */}
-      <div style={{ position: 'absolute', bottom: '30px', left: '40px', color: '#888', zIndex: 10, fontFamily: 'sans-serif', userSelect: 'none' }}>
+      {/* <div style={{ position: 'absolute', bottom: '30px', left: '40px', color: '#888', zIndex: 10, fontFamily: 'sans-serif', userSelect: 'none' }}>
         <div style={{ marginBottom: '15px' }}>
           <p style={{ fontSize: '10px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>Memories</p>
           <p style={{ fontSize: '24px', color: '#FFD700', fontWeight: 'bold', margin: 0 }}>
@@ -533,22 +462,47 @@ export default function GrandTreeApp() {
             {(CONFIG.counts.foliage / 1000).toFixed(0)}K <span style={{ fontSize: '10px', color: '#555', fontWeight: 'normal' }}>EMERALD NEEDLES</span>
           </p>
         </div>
+      </div> */}
+
+      {/* Title */}
+      <div style={{
+        position: 'absolute',
+        top: '40px',
+        width: '100%',
+        textAlign: 'center',
+        zIndex: 10,
+        pointerEvents: 'none'
+      }}>
+        <h1 style={{
+          fontFamily: "'Mountains of Christmas', cursive, serif",
+          fontSize: '4rem',
+          color: '#FFD700',
+          margin: 0,
+          textShadow: '0 0 10px #FFD700, 0 0 20px #D32F2F',
+          letterSpacing: '5px',
+          fontWeight: 'bold'
+        }}>
+          MERRY CHRISTMAS
+        </h1>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap');
+        `}</style>
       </div>
 
-      {/* UI - Buttons */}
-      <div style={{ position: 'absolute', bottom: '30px', right: '40px', zIndex: 10, display: 'flex', gap: '10px' }}>
-        <button onClick={() => setDebugMode(!debugMode)} style={{ padding: '12px 15px', backgroundColor: debugMode ? '#FFD700' : 'rgba(0,0,0,0.5)', border: '1px solid #FFD700', color: debugMode ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-           {debugMode ? 'HIDE DEBUG' : '🛠 DEBUG'}
-        </button>
-        <button onClick={() => setSceneState(s => s === 'CHAOS' ? 'FORMED' : 'CHAOS')} style={{ padding: '12px 30px', backgroundColor: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255, 215, 0, 0.5)', color: '#FFD700', fontFamily: 'serif', fontSize: '14px', fontWeight: 'bold', letterSpacing: '3px', textTransform: 'uppercase', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-           {sceneState === 'CHAOS' ? 'Assemble Tree' : 'Disperse'}
-        </button>
+      {/* Instructions */}
+      <div style={{ position: 'absolute', bottom: '30px', right: '40px', zIndex: 10, color: '#FFD700', fontFamily: 'serif', fontSize: '14px', letterSpacing: '1px' }}>
+        {sceneState === 'FORMED' ? 'PHÓNG TO ĐI BÉ' : 'THU NHỎ ĐỂ QUAY LẠI NÈ'}
       </div>
 
-      {/* UI - AI Status */}
-      <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', color: aiStatus.includes('ERROR') ? '#FF0000' : 'rgba(255, 215, 0, 0.4)', fontSize: '10px', letterSpacing: '2px', zIndex: 10, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px' }}>
-        {aiStatus}
-      </div>
+      {/* Modal for viewing photo */}
+      {selectedImage && (
+        <div
+          style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          onClick={() => setSelectedImage(null)}
+        >
+          <img src={selectedImage} style={{ maxHeight: '80%', maxWidth: '80%', border: '10px solid #fff', boxShadow: '0 0 50px rgba(0,0,0,0.8)' }} />
+        </div>
+      )}
     </div>
   );
 }
